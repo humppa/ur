@@ -1,0 +1,38 @@
+version: 0.2
+
+env:
+  variables:
+    # S3 bucket must exist and CodeBuild must have access to it
+    BUCKET: "cloudformation-lambda-726414259833"
+    PACKAGE: "github.com/humppa/ur"
+
+phases:
+  install:
+    commands:
+      - mkdir -p "/go/src/$(dirname ${PACKAGE})"
+      - ln -s "${CODEBUILD_SRC_DIR}" "/go/src/${PACKAGE}"
+      - go get -u github.com/golang/lint/golint
+
+  pre_build:
+    commands:
+      # Make sure we're in the project directory
+      - cd "/go/src/${PACKAGE}"
+      # Fetch the dependencies
+      - go get -t -v github.com/aws/aws-lambda-go/events
+      - go get -t -v github.com/aws/aws-lambda-go/lambda
+      - go get -t -v github.com/stretchr/testify/assert
+      # Ensure that the code passes all lint tests
+      - golint -set_exit_status
+      # Check for common problems
+      - go vet .
+      # Run all tests included with the application
+      - go test .
+
+  build:
+    commands:
+      - go build -o main
+      - aws cloudformation package --template-file sam.yml --s3-bucket ${BUCKET} --output-template-file cf.yml
+
+artifacts:
+  files:
+  - cf.yml
